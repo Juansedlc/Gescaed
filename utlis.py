@@ -1,4 +1,5 @@
 import cv2
+import pyperclip as pc
 import numpy as np
 
 ## TO STACK ALL THE IMAGES IN ONE WINDOW
@@ -41,11 +42,8 @@ def stackImages(imgArray,scale,lables=[]):
 def reorder(myPoints):
 
     myPoints = myPoints.reshape((4, 2)) # REMOVE EXTRA BRACKET
-    print(myPoints)
     myPointsNew = np.zeros((4, 1, 2), np.int32) # NEW MATRIX WITH ARRANGED POINTS
     add = myPoints.sum(1)
-    print(add)
-    print(np.argmax(add))
     myPointsNew[0] = myPoints[np.argmin(add)]  #[0,0]
     myPointsNew[3] =myPoints[np.argmax(add)]   #[w,h]
     diff = np.diff(myPoints, axis=1)
@@ -66,7 +64,6 @@ def rectContour(contours):
             if len(approx) == 4:
                 rectCon.append(i)
     rectCon = sorted(rectCon, key=cv2.contourArea,reverse=True)
-    #print(len(rectCon))
     return rectCon
 
 def getCornerPoints(cont):
@@ -74,51 +71,135 @@ def getCornerPoints(cont):
     approx = cv2.approxPolyDP(cont, 0.02 * peri, True) # APPROXIMATE THE POLY TO GET CORNER POINTS
     return approx
 
+def splitImages(img, tipohoja):
+    if tipohoja == 1:
+        img = cv2.resize(img,(600,600))
+        img1 = img[38:572,35:144]
+        img2 = img[38:572,184:296]
+        img3 = img[38:572,335:445]
+        img4 = img[38:572,485:597]
+        img1 = cv2.resize(img1,(100,600))
+        img2 = cv2.resize(img2,(100,600))
+        img3 = cv2.resize(img3,(100,600))
+        img4 = cv2.resize(img4,(100,600))
+        return img1 , img2 , img3, img4
+    if tipohoja == 0:
+        img = cv2.resize(img,(600,600))
+        img1 = img[6:598,30:119]
+        img2 = img[6:598,150:239]
+        img3 = img[6:598,270:359]
+        img4 = img[6:598,390:479]
+        img5 = img[6:598,510:599]
+        img1 = cv2.resize(img1,(100,600))
+        img2 = cv2.resize(img2,(100,600))
+        img3 = cv2.resize(img3,(100,600))
+        img4 = cv2.resize(img4,(100,600))
+        img5 = cv2.resize(img5,(100,600))
+        return img1 , img2 , img3, img4, img5
+
+
 def splitBoxes(img):
-    rows = np.vsplit(img,5)
+    imgs = splitImages(img, tipohoja=0)
     boxes=[]
-    for r in rows:
-        cols= np.hsplit(r,5)
-        for box in cols:
-            boxes.append(box)
+    for i in imgs:
+        i = cv2.resize(i,(100,600))
+        rows = np.vsplit(i,24) 
+        for r in rows:
+            cols= np.hsplit(r,4)
+            for box in cols:
+
+                boxes.append(box)
+    
     return boxes
 
-def drawGrid(img,questions=5,choices=5):
-    secW = int(img.shape[1]/questions)
-    secH = int(img.shape[0]/choices)
-    for i in range (0,9):
-        pt1 = (0,secH*i)
-        pt2 = (img.shape[1],secH*i)
-        pt3 = (secW * i, 0)
-        pt4 = (secW*i,img.shape[0])
-        cv2.line(img, pt1, pt2, (255, 255, 0),2)
-        cv2.line(img, pt3, pt4, (255, 255, 0),2)
+def drawGrid(imge,tipohoja,questions):
+    imgs = splitImages(imge,tipohoja)
+    for img in imgs:
+        secW = int(img.shape[1]/4)
+        secH = int(img.shape[0]/questions)
+        for i in range (0,questions):
+            pt1 = (0,secH*i)
+            pt2 = (img.shape[1],secH*i)
+            pt3 = (secW * i, 0)
+            pt4 = (secW*i,img.shape[0])
+            cv2.line(img, pt1, pt2, (255, 255, 0),2)
+            cv2.line(img, pt3, pt4, (255, 255, 0),2)
+    if tipohoja == 0:
+        imgres = cv2.hconcat([imgs[0],imgs[1],imgs[2],imgs[3],imgs[4]])
+    if tipohoja == 1:
+        imgres = cv2.hconcat([imgs[0],imgs[1],imgs[2],imgs[3]])  
+    return imgres
 
-    return img
+def showAnswers(imge,tipohoja,myIndex,grading,ans,questions,choices=4):
+     imgs = splitImages(imge,tipohoja)
+     counter = -1
+     for img in imgs:
+        secW = int(img.shape[1]/choices)
+        secH = int(img.shape[0]/questions)
+        counter = counter+1
+        for x in range(0,questions):
+            myAns= myIndex[(x+(questions*counter))]   
+            cX = (myAns * secW) + secW // 2
+            cY = (x * secH) + secH // 2
+            if grading[(x+(questions*counter))]==1:
+                myColor = (0,255,0)
+                cv2.rectangle(img,(myAns*secW,x*secH),((myAns*secW)+secW,(x*secH)+secH),myColor,cv2.FILLED)
+                cv2.circle(img,(cX,cY),7,myColor,cv2.FILLED)
+            else:
+                myColor = (0,0,255)
+                cv2.rectangle(img, (myAns * secW, x * secH), ((myAns * secW) + secW, (x * secH) + secH), myColor, cv2.FILLED)
+                cv2.circle(img, (cX, cY),7, myColor, cv2.FILLED)
+                # CORRECT ANSWER
+                myColor = (255, 0, 0)
+                correctAns = ans[(x+(questions*counter))]
+                cv2.circle(img,((correctAns * secW)+secW//2, (x * secH)+secH//2),
+                5,myColor,cv2.FILLED)
+     if tipohoja == 0:
+         imgres = cv2.hconcat([imgs[0],imgs[1],imgs[2],imgs[3],imgs[4]])
+     if tipohoja == 1:
+         imgres = cv2.hconcat([imgs[0],imgs[1],imgs[2],imgs[3]])
+     return imgres
 
-def showAnswers(img,myIndex,grading,ans,questions=5,choices=5):
-     secW = int(img.shape[1]/questions)
-     secH = int(img.shape[0]/choices)
+def copyfun(ans):
+    lenAns = len(ans)
+    StringAns = ""
+    for x in range(0,lenAns):
+        StringAns = StringAns + str(ans[x])+"\t"
 
-     for x in range(0,questions):
-         myAns= myIndex[x]
-         cX = (myAns * secW) + secW // 2
-         cY = (x * secH) + secH // 2
-         if grading[x]==1:
-            myColor = (0,255,0)
-            #cv2.rectangle(img,(myAns*secW,x*secH),((myAns*secW)+secW,(x*secH)+secH),myColor,cv2.FILLED)
-            cv2.circle(img,(cX,cY),50,myColor,cv2.FILLED)
-         else:
-            myColor = (0,0,255)
-            #cv2.rectangle(img, (myAns * secW, x * secH), ((myAns * secW) + secW, (x * secH) + secH), myColor, cv2.FILLED)
-            cv2.circle(img, (cX, cY), 50, myColor, cv2.FILLED)
+    print(StringAns)
+    return StringAns  
 
-            # CORRECT ANSWER
-            myColor = (0, 255, 0)
-            correctAns = ans[x]
-            cv2.circle(img,((correctAns * secW)+secW//2, (x * secH)+secH//2),
-            20,myColor,cv2.FILLED)
+def copy(Stringan):
+    pc.copy(Stringan)
 
 
+def ansTuple(res,resnum):
+    resun = int(resnum)
+    respuestas = []
+    for x in range(0,resun):
+        if res[x] == "a":
+            respuestas.append(0)
+        elif res[x] == "b":
+            respuestas.append(1) 
+        elif res[x] == "c":
+            respuestas.append(2) 
+        elif res[x] == "d":
+            respuestas.append(3) 
+    return respuestas
 
+def the120inator(res):
+    lenres = len(res)
+    print(res)
+    if lenres != 120:
+        for x in range (lenres,120):
+            res.append(0)
+    print("nuevo res", res)
+    return res
+
+def the120ans(len, grade):
+    len = int(len)
+    grade2 = []
+    for x in range (0,len):
+        grade2.append(grade[x])
+    return grade2
 
